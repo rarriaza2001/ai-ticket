@@ -1,7 +1,7 @@
 [project]
 name = "shared-contracts"
 version = "0.1.0"
-description = "Shared DTOs, enums, and queue contracts for AI ticket triage services"
+description = "Shared foundation schemas (health/readiness) for triage services"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

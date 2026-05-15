@@ -28,6 +28,10 @@ def configure_logging() -> None:
         cache_logger_on_first_use=True,
     )
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
+    structlog.contextvars.bind_contextvars(
+        service=settings.service_name,
+        env=settings.env,
+    )
 
 
 def get_logger(name: str | None = None):

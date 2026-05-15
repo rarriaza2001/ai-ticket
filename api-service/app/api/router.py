@@ -1,8 +1,7 @@
 from fastapi import APIRouter
 
-from app.api.routes import health, ready, tickets
+from app.api.routes import health, ready
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(ready.router)
-api_router.include_router(tickets.router)

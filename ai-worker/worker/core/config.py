@@ -1,16 +1,7 @@
-from enum import StrEnum
 from functools import lru_cache
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class QueueBackend(StrEnum):
-    """Reserved queue implementation selector (Phase 2)."""
-
-    UNSET = "unset"
-    SQS = "sqs"
-    REDIS_STREAM = "redis_stream"
 
 
 class Settings(BaseSettings):
@@ -25,8 +16,6 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
 
     database_url: str = Field(..., validation_alias="DATABASE_URL")
-    db_pool_max_size: int = Field(default=4, validation_alias="DB_POOL_MAX_SIZE")
-    db_command_timeout_seconds: int = Field(default=120, validation_alias="DB_COMMAND_TIMEOUT_SECONDS")
 
     redis_url: str = Field(..., validation_alias="REDIS_URL")
     redis_connect_timeout_seconds: float = Field(
@@ -36,7 +25,14 @@ class Settings(BaseSettings):
         default=5.0, validation_alias="REDIS_SOCKET_TIMEOUT_SECONDS"
     )
 
-    queue_backend: QueueBackend = Field(default=QueueBackend.UNSET, validation_alias="QUEUE_BACKEND")
+    @property
+    def sqlalchemy_async_url(self) -> str:
+        url = self.database_url.strip()
+        if url.startswith("postgresql+asyncpg://"):
+            return url
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
 
 
 @lru_cache
