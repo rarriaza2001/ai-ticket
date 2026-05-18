@@ -1,12 +1,12 @@
-# AI Support Ticket Triage — Phase 1 foundation
+# AI Support Ticket Triage — Phase 2 persistence
 
 Two Python services plus **neutral** shared schemas:
 
-- **`api-service/`** — FastAPI: `/health`, `/ready`, SQLAlchemy async sessions, Redis client, structured logging, centralized errors, access middleware.
-- **`ai-worker/`** — Background process: SQLAlchemy + Redis connectivity check, stub idle loop.
-- **`shared-contracts/`** — `HealthResponse` and `ReadinessResponse` only (no ticket/queue/AI contracts yet).
+- **`api-service/`** — FastAPI: health/readiness plus **ticket persistence** (intake, embeddings, routing decisions, audit events, similarity search with caller-provided vectors).
+- **`ai-worker/`** — Background process: SQLAlchemy + Redis connectivity check, stub idle loop (no job processing in Phase 2).
+- **`shared-contracts/`** — `HealthResponse` and `ReadinessResponse` only (ticket HTTP schemas live in api-service).
 
-Postgres is **authoritative** for future data. Redis is **non-authoritative** (wired for readiness and future cache only).
+Postgres is **authoritative** for ticket data. Redis is **non-authoritative** (readiness probe only in Phase 2).
 
 ## Local development (Docker Compose)
 
@@ -25,12 +25,25 @@ That is a **host / Docker networking or DNS** problem, not an application bug. T
 3. **Restart Docker Desktop** after VPN or Wi‑Fi changes.
 4. Windows: `ipconfig /flushdns` (elevated PowerShell), then retry `docker compose pull`.
 
-The default Compose file uses **`postgres:16-bookworm`** so you only pull the official Postgres image (same registry as `redis:7-alpine`). If even that fails, the issue is general Docker Hub access from your environment.
+If even the Postgres image pull fails, the issue is general Docker Hub access from your environment.
 
-### Postgres image variants
+### Postgres + pgvector (Phase 2 default)
 
-- **Default** in [`docker/docker-compose.yml`](docker/docker-compose.yml): `postgres:16-bookworm` — enough for Phase 1 (`/ready` runs `SELECT 1` only).
-- **Optional pgvector** (when Docker Hub works): change the `postgres` service to `image: pgvector/pgvector:pg16` and add a read-only volume mount for [`docker/postgres/init/`](docker/postgres/init/) so `CREATE EXTENSION vector` runs on first init. Use a **fresh** named volume if you switch images so init scripts run again.
+[`docker/docker-compose.yml`](docker/docker-compose.yml) uses **`pgvector/pgvector:pg16`** with the init script mounted from [`docker/postgres/init/`](docker/postgres/init/). Postgres is published on **`localhost:5433`** by default (`POSTGRES_PORT` in Compose) for host-run migrations and tests.
+
+**Switching from Phase 1 `postgres:16-bookworm`:** remove the old volume so init scripts run:
+
+```bash
+docker compose -f docker/docker-compose.yml down -v
+docker compose -f docker/docker-compose.yml --env-file docker/.env.example up --build
+```
+
+Verify the extension:
+
+```bash
+docker compose -f docker/docker-compose.yml exec postgres \
+  psql -U ticket -d tickets -c "SELECT extname FROM pg_extension WHERE extname = 'vector';"
+```
 
 Containers use Docker DNS hostnames **`postgres`** and **`redis`** (not `localhost`) for `DATABASE_URL` and `REDIS_URL`.
 
@@ -57,17 +70,59 @@ Optional: `LOG_LEVEL`, `ENV`, `SERVICE_NAME`, and pool tuning `DB_POOL_SIZE`, `D
 
 Examples: [`docker/.env.example`](docker/.env.example), [`infrastructure/env/.env.example`](infrastructure/env/.env.example).
 
-## Migrations (tooling only)
+## Migrations (Phase 2 schema)
 
-From `api-service/`:
+From `api-service/` (Postgres must be running; default host URL uses published port `5432`):
 
 ```bash
+cd api-service
 uv sync --extra migrations
+export DATABASE_URL=postgresql://ticket:ticket@localhost:5433/tickets   # PowerShell: $env:DATABASE_URL=...
 uv run alembic upgrade head
 ```
 
-Phase 1 keeps a **no-op** revision; application tables arrive in Phase 2.
+Head revision **`phase2_ticket_persistence`** creates the `vector` extension and tables: `tickets`, `ticket_embeddings`, `routing_decisions`, `ticket_events`.
+
+## Tests
+
+Integration tests require Postgres with pgvector (same Compose stack):
+
+```bash
+cd api-service
+uv sync --extra test
+export DATABASE_URL=postgresql://ticket:ticket@localhost:5432/tickets
+uv run pytest
+```
+
+## Phase 2 API smoke (provided vectors only)
+
+Create a ticket:
+
+```bash
+curl -sS -X POST http://localhost:8000/tickets \
+  -H "Content-Type: application/json" \
+  -d '{"source":"email","subject":"Login issue","body":"Cannot reset password"}'
+```
+
+Store a **test** embedding (1536 floats — use a JSON file locally; no AI generation in API):
+
+```bash
+# Example: generate a placeholder vector in Python, then POST (see OpenAPI /docs)
+curl -sS -X POST "http://localhost:8000/tickets/<TICKET_ID>/embeddings/test" \
+  -H "Content-Type: application/json" \
+  -d @embedding-payload.json
+```
+
+Similarity search with a provided query vector:
+
+```bash
+curl -sS -X POST http://localhost:8000/tickets/similar \
+  -H "Content-Type: application/json" \
+  -d @similar-query.json
+```
+
+Embedding dimension is fixed at **1536** for Phase 2 (`persistence-placeholder` model name).
 
 ## Architecture
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`infrastructure/ecs/README.md`](infrastructure/ecs/README.md) for boundaries and production-oriented notes (ECS is documentation-only in Phase 1).
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`infrastructure/ecs/README.md`](infrastructure/ecs/README.md) for boundaries and production-oriented notes.

@@ -1,14 +1,16 @@
 services:
-  # Official Postgres image (Docker Hub). Avoids separate pgvector image pull; Phase 1 only needs
-  # SQL connectivity. For local pgvector, see README "Postgres image variants".
+  # Postgres 16 with pgvector for Phase 2 embeddings. Init script enables extension on first boot.
   postgres:
-    image: postgres:16-bookworm
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ticket}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticket}
       POSTGRES_DB: ${POSTGRES_DB:-tickets}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ticket} -d ${POSTGRES_DB:-tickets}"]
       interval: 5s

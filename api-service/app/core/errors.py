@@ -19,11 +19,34 @@ class PostgresUnavailable(Exception):
         self.redis_ok = redis_ok
 
 
+class TicketNotFound(Exception):
+    """Ticket does not exist."""
+
+    def __init__(self, ticket_id: object) -> None:
+        super().__init__(f"Ticket not found: {ticket_id}")
+        self.ticket_id = ticket_id
+
+
 def _request_id(request: Request) -> str | None:
     return getattr(request.state, "request_id", None)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(TicketNotFound)
+    async def ticket_not_found_handler(
+        request: Request,
+        exc: TicketNotFound,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "code": "ticket_not_found",
+                "message": str(exc),
+                "ticket_id": str(exc.ticket_id),
+                "request_id": _request_id(request),
+            },
+        )
+
     @app.exception_handler(PostgresUnavailable)
     async def postgres_unavailable_handler(
         request: Request,

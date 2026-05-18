@@ -51,8 +51,9 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
         description=(
-            "Phase 1 foundation: Postgres is authoritative; Redis is non-authoritative cache. "
-            "Product routes are deferred to Phase 2."
+            "Phase 2 persistence: ticket intake, embeddings (pgvector), routing decisions, "
+            "and audit events. Postgres is authoritative; Redis is non-authoritative. "
+            "No AI generation, queue processing, or caching in this phase."
         ),
     )
     register_exception_handlers(app)
