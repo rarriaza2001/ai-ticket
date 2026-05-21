@@ -27,6 +27,15 @@ class EmbeddingResult:
 
 
 @dataclass(frozen=True)
+class SimilarTicketContext:
+    ticket_id: str
+    subject: str
+    status: str
+    distance: float
+    body_excerpt: str
+
+
+@dataclass(frozen=True)
 class DraftSuggestionResult:
     draft_text: str
     confidence: float
@@ -54,8 +63,7 @@ class AiProvider(ABC):
         *,
         subject: str,
         body: str,
-        similar_subjects: list[str],
-        similar_ticket_ids: list[str],
+        similar_context: list[SimilarTicketContext],
         prompt: str,
     ) -> DraftSuggestionResult:
         raise NotImplementedError

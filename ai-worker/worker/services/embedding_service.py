@@ -11,13 +11,10 @@ from worker.providers.base import AiProvider
 from worker.repositories.ticket_embedding_repository import TicketEmbeddingRepository
 from worker.repositories.ticket_event_repository import TicketEventRepository
 from worker.repositories.ticket_repository import TicketRepository
+from worker.services.text_preparation import prepare_ticket_text
 
 if TYPE_CHECKING:
     from worker.db.models.ticket import Ticket
-
-
-def _ticket_text(ticket: Ticket) -> str:
-    return f"{ticket.subject}\n{ticket.body}"
 
 
 def _source_text_hash(text: str) -> str:
@@ -56,7 +53,8 @@ class EmbeddingService:
         self, ticket: Ticket
     ) -> tuple[list[float], str, int, str, float]:
         """Return (vector, model_name, dimension, provider_name, latency_ms)."""
-        text = _ticket_text(ticket)
+        prepared = prepare_ticket_text(ticket.subject, ticket.body)
+        text = prepared.sanitized_text
         text_hash = _source_text_hash(text)
 
         if not self._settings.force_regenerate_embeddings:

@@ -62,6 +62,7 @@ class RoutingDecisionResponse(BaseModel):
     reason: str | None
     decided_by: str
     created_at: datetime
+    human_review_required: bool = False
 
 
 class SimilarTicketsRequest(BaseModel):

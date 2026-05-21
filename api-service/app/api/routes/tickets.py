@@ -105,7 +105,10 @@ async def get_ticket_routing_decision(
     decision = await service.get_latest_routing_decision(ticket_id)
     if decision is None:
         return None
-    return RoutingDecisionResponse.model_validate(decision)
+    data = RoutingDecisionResponse.model_validate(decision)
+    return data.model_copy(
+        update={"human_review_required": decision.reason == "human_review_required"}
+    )
 
 
 @router.get(

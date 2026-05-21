@@ -6,7 +6,7 @@ from decimal import Decimal
 from worker.core.config import Settings
 from worker.db.models.ticket import Ticket
 from worker.domain.enums import DecidedBy, RoutingDecisionType, TicketEventType, TicketStatus
-from worker.providers.base import AiProvider, ClassificationResult
+from worker.providers.base import AiProvider
 from worker.providers.errors import MalformedModelOutput
 from worker.prompts import PROMPT_VERSION, load_classification_prompt
 from worker.repositories.routing_decision_repository import RoutingDecisionRepository
@@ -19,6 +19,7 @@ from worker.services.classification_policy import (
     validate_raw_classification,
 )
 from worker.services.embedding_service import _with_retries
+from worker.services.text_preparation import prepare_ticket_text
 
 
 class ClassificationService:
@@ -37,13 +38,8 @@ class ClassificationService:
         self._routing = routing
         self._events = events
 
-    async def _call_classify(self, ticket: Ticket, prompt: str) -> ClassificationResult:
-        raw = await self._provider.classify(
-            subject=ticket.subject, body=ticket.body, prompt=prompt
-        )
-        return validate_raw_classification(raw)
-
     async def classify_and_persist(self, ticket: Ticket) -> tuple[ParsedClassification, float]:
+        prepared = prepare_ticket_text(ticket.subject, ticket.body)
         prompt = load_classification_prompt()
         started = time.perf_counter()
         parsed: ParsedClassification | None = None
@@ -54,14 +50,19 @@ class ClassificationService:
             try:
 
                 async def _classify():
-                    return await self._call_classify(ticket, prompt)
+                    return await self._provider.classify(
+                        subject=prepared.subject,
+                        body=prepared.body,
+                        prompt=prompt,
+                    )
 
                 raw = await _with_retries(
                     _classify,
                     max_retries=0,
                 )
+                validated = validate_raw_classification(raw)
                 parsed = apply_classification_policy(
-                    raw,
+                    validated,
                     confidence_high=self._settings.classification_confidence_high,
                     confidence_medium=self._settings.classification_confidence_medium,
                     routing_confidence_min=self._settings.routing_confidence_min,

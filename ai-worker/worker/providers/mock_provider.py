@@ -10,6 +10,7 @@ from worker.providers.base import (
     ClassificationResult,
     DraftSuggestionResult,
     EmbeddingResult,
+    SimilarTicketContext,
 )
 from worker.providers.errors import MalformedModelOutput
 
@@ -74,17 +75,24 @@ class MockAiProvider(AiProvider):
         *,
         subject: str,
         body: str,
-        similar_subjects: list[str],
-        similar_ticket_ids: list[str],
+        similar_context: list[SimilarTicketContext],
         prompt: str,
     ) -> DraftSuggestionResult:
         self.call_counts["suggest"] += 1
         _ = prompt
-        context_hint = similar_subjects[0] if similar_subjects else "none"
-        ticket_hint = similar_ticket_ids[0] if similar_ticket_ids else "none"
+        if similar_context:
+            peer = similar_context[0]
+            context_hint = (
+                f"{peer.subject[:40]} status={peer.status} "
+                f"distance={peer.distance:.2f} excerpt={peer.body_excerpt[:60]}"
+            )
+            ticket_hint = peer.ticket_id
+        else:
+            context_hint = "none"
+            ticket_hint = "none"
         draft = (
             f"[SUGGESTION for human review] Re: {subject[:80]} — "
-            f"based on similar ticket '{context_hint[:60]}' ({ticket_hint}). "
+            f"based on similar ticket ({ticket_hint}): {context_hint}. "
             f"(body length {len(body)})"
         )
         return DraftSuggestionResult(

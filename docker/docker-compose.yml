@@ -35,8 +35,10 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.api
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://ticket:ticket@postgres:5432/tickets}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # In-container URLs always use Compose service names (not host localhost).
+      # Host shell DATABASE_URL/REDIS_URL (e.g. for Alembic on :5433) must not override these.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ticket}:${POSTGRES_PASSWORD:-ticket}@postgres:5432/${POSTGRES_DB:-tickets}
+      REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENV: ${ENV:-local}
       SERVICE_NAME: api-service
@@ -69,8 +71,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.worker
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://ticket:ticket@postgres:5432/tickets}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ticket}:${POSTGRES_PASSWORD:-ticket}@postgres:5432/${POSTGRES_DB:-tickets}
+      REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENV: ${ENV:-local}
       SERVICE_NAME: ai-worker

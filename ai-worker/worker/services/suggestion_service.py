@@ -8,7 +8,8 @@ from worker.core.config import Settings
 from worker.db.models.ticket import Ticket
 from worker.domain.enums import TicketEventType
 from worker.prompts import PROMPT_VERSION, load_suggestion_prompt
-from worker.providers.base import AiProvider
+from worker.providers.base import AiProvider, SimilarTicketContext
+from worker.services.text_preparation import prepare_ticket_text
 from worker.repositories.draft_suggestion_repository import DraftSuggestionRepository
 from worker.repositories.ticket_embedding_repository import SimilarTicketRow
 from worker.repositories.ticket_event_repository import TicketEventRepository
@@ -39,17 +40,25 @@ class SuggestionService:
         if await self._drafts.has_pending_review(ticket.id):
             return False, 0.0
 
+        prepared = prepare_ticket_text(ticket.subject, ticket.body)
         prompt = load_suggestion_prompt()
-        similar_subjects = [m.subject for m in usable_matches]
-        similar_ticket_ids = [str(m.ticket_id) for m in usable_matches]
+        similar_context = [
+            SimilarTicketContext(
+                ticket_id=str(m.ticket_id),
+                subject=m.subject,
+                status=m.status,
+                distance=m.distance,
+                body_excerpt=m.body_excerpt,
+            )
+            for m in usable_matches
+        ]
         started = time.perf_counter()
 
         async def _suggest():
             return await self._provider.generate_draft_suggestion(
-                subject=ticket.subject,
-                body=ticket.body,
-                similar_subjects=similar_subjects,
-                similar_ticket_ids=similar_ticket_ids,
+                subject=prepared.subject,
+                body=prepared.body,
+                similar_context=similar_context,
                 prompt=prompt,
             )
 

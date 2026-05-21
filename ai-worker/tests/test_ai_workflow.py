@@ -114,6 +114,16 @@ async def test_happy_path_workflow(
     assert mock_provider.call_counts["embed"] == 1
     assert mock_provider.call_counts["suggest"] == 1
 
+    from worker.db.models.draft_suggestion import DraftSuggestion
+
+    draft_row = await db_session.execute(
+        select(DraftSuggestion).where(DraftSuggestion.ticket_id == ticket_id).limit(1)
+    )
+    draft = draft_row.scalars().first()
+    assert draft is not None
+    assert "status=" in draft.draft_text
+    assert "distance=" in draft.draft_text
+
 
 @pytest.mark.asyncio
 async def test_no_similarity_matches_skips_draft(

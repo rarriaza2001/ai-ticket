@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from worker.db.models.ticket import Ticket
 from worker.db.models.ticket_embedding import TicketEmbedding
+from worker.services.text_preparation import excerpt_body
 
 
 class SimilarTicketRow(NamedTuple):
@@ -19,6 +20,7 @@ class SimilarTicketRow(NamedTuple):
     source: str
     status: str
     distance: float
+    body_excerpt: str
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,7 @@ class TicketEmbeddingRepository:
                 Ticket.subject,
                 Ticket.source,
                 Ticket.status,
+                Ticket.body,
                 distance_expr,
             )
             .join(Ticket, TicketEmbedding.ticket_id == Ticket.id)
@@ -147,7 +150,8 @@ class TicketEmbeddingRepository:
                 subject=row[2],
                 source=row[3],
                 status=row[4],
-                distance=float(row[5]),
+                distance=float(row[6]),
+                body_excerpt=excerpt_body(row[5] or ""),
             )
             for row in result.all()
         ]

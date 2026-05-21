@@ -19,6 +19,7 @@ from worker.providers.base import (
     ClassificationResult,
     DraftSuggestionResult,
     EmbeddingResult,
+    SimilarTicketContext,
 )
 from worker.providers.errors import MalformedModelOutput
 
@@ -97,17 +98,21 @@ class OpenAiProvider(AiProvider):
         *,
         subject: str,
         body: str,
-        similar_subjects: list[str],
-        similar_ticket_ids: list[str],
+        similar_context: list[SimilarTicketContext],
         prompt: str,
     ) -> DraftSuggestionResult:
         context_lines = [
-            f"- {tid}: {subj}" for tid, subj in zip(similar_ticket_ids, similar_subjects, strict=False)
+            (
+                f"- id={ctx.ticket_id} subject={ctx.subject!r} status={ctx.status} "
+                f"distance={ctx.distance:.3f} excerpt={ctx.body_excerpt!r}"
+            )
+            for ctx in similar_context
         ]
         context_block = "\n".join(context_lines) if context_lines else "(none)"
         user_content = (
             f"{prompt}\n\n"
             f"Current ticket subject: {subject}\n"
+            f"Current ticket body: {body}\n"
             f"Similar tickets:\n{context_block}\n"
             "Produce a draft reply for human review only. "
             "Respond with JSON: {\"draft_text\": string, \"summary\": string|null, "

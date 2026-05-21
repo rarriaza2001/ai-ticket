@@ -62,6 +62,27 @@ curl -sS http://localhost:8000/ready
 - Redis down only: **200** with `degraded: true` (Postgres still up).
 - Postgres down / bad `DATABASE_URL`: **503** JSON with `code: postgres_unavailable`.
 
+**Phase 3 end-to-end (worker + API):**
+
+```bash
+# 1. Create ticket (status pending_embedding)
+curl -sS -X POST http://localhost:8000/tickets \
+  -H "Content-Type: application/json" \
+  -d '{"source":"web","subject":"Billing issue","body":"I was charged twice."}'
+
+# 2. Wait ~5–10s for ai-worker poll, then check status (expect routed)
+curl -sS http://localhost:8000/tickets/<TICKET_ID>/status
+
+# 3. Reads (human review flags without a new ticket status)
+curl -sS http://localhost:8000/tickets/<TICKET_ID>/routing-decision
+curl -sS http://localhost:8000/tickets/<TICKET_ID>/draft-suggestion
+curl -sS http://localhost:8000/tickets/<TICKET_ID>/events
+```
+
+Tickets stay **`routed`** after processing. Use **`requires_human_review`** on draft suggestions, **`human_review_required`** on routing decisions (when `reason` is `human_review_required`), and classification event payloads for review queues.
+
+**Host vs container URLs:** Compose builds in-container `DATABASE_URL` from `POSTGRES_*` (service hostname `postgres`). For host-side Alembic/tests, set `DATABASE_URL=postgresql://ticket:ticket@localhost:5433/tickets` in your shell — do not export host `localhost` URLs before `docker compose up` or they used to override container env (now ignored by Compose).
+
 ## Configuration
 
 Required for both services: **`DATABASE_URL`**, **`REDIS_URL`**.
@@ -72,7 +93,7 @@ Examples: [`docker/.env.example`](docker/.env.example), [`infrastructure/env/.en
 
 ## Migrations (Phase 2 schema)
 
-From `api-service/` (Postgres must be running; default host URL uses published port `5432`):
+From `api-service/` (Postgres must be running; host URL uses published port **`5433`**):
 
 ```bash
 cd api-service

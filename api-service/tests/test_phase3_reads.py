@@ -58,6 +58,35 @@ async def test_get_draft_suggestion_endpoint(
 
 
 @pytest.mark.asyncio
+async def test_routing_decision_exposes_human_review_flag(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    from app.domain.enums import DecidedBy, RoutingDecisionType
+    from app.repositories.routing_decision_repository import RoutingDecisionRepository
+
+    intake = TicketIntakeService(TicketRepository(db_session), TicketEventRepository(db_session))
+    ticket = await intake.create_ticket(source="web", subject="Review", body="Needs eyes.")
+    routing = RoutingDecisionRepository(db_session)
+    await routing.create(
+        ticket_id=ticket.id,
+        route_to="triage",
+        decision_type=RoutingDecisionType.TEAM.value,
+        decided_by=DecidedBy.WORKER.value,
+        confidence=Decimal("0.55"),
+        reason="human_review_required",
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/tickets/{ticket.id}/routing-decision")
+    assert response.status_code == 200
+    data = response.json()
+    assert data is not None
+    assert data["human_review_required"] is True
+    assert data["reason"] == "human_review_required"
+
+
+@pytest.mark.asyncio
 async def test_get_draft_suggestion_returns_null_when_missing(
     client: AsyncClient,
     db_session: AsyncSession,
