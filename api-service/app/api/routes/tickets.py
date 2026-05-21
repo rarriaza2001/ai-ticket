@@ -6,6 +6,7 @@ from fastapi import APIRouter, status
 
 from app.api.schemas.tickets import (
     CreateTicketRequest,
+    DraftSuggestionResponse,
     RoutingDecisionResponse,
     SimilarTicketResult,
     SimilarTicketsRequest,
@@ -105,6 +106,20 @@ async def get_ticket_routing_decision(
     if decision is None:
         return None
     return RoutingDecisionResponse.model_validate(decision)
+
+
+@router.get(
+    "/{ticket_id}/draft-suggestion",
+    response_model=DraftSuggestionResponse | None,
+)
+async def get_ticket_draft_suggestion(
+    ticket_id: uuid.UUID,
+    service: TicketQuerySvc,
+) -> DraftSuggestionResponse | None:
+    draft = await service.get_latest_draft_suggestion(ticket_id)
+    if draft is None:
+        return None
+    return DraftSuggestionResponse.model_validate(draft)
 
 
 @router.post(

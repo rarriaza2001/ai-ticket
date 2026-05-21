@@ -1,4 +1,4 @@
-# Architecture — Phase 2 persistence
+# Architecture — Phase 3 AI scaffolding
 
 ## Service boundaries
 
@@ -17,44 +17,42 @@ flowchart LR
   worker --> redis
 ```
 
-- **api-service** — FastAPI process: **SQLAlchemy async** sessions, **thin routes** (`/health`, `/ready`, ticket persistence), **repositories** own SQL/ORM access, **services** orchestrate multi-write flows (intake, embeddings, routing persistence, queries). Centralized **exception handlers** and **access logging** (structured JSON via structlog).
-- **ai-worker** — Long-running process: startup **Postgres + Redis connectivity** (SQLAlchemy async + redis-py), then a **stub heartbeat loop** (no jobs, no queues in Phase 1).
-- **shared-contracts** — **Neutral** Pydantic schemas only (`HealthResponse`, `ReadinessResponse`). No ticket, queue, or AI types in Phase 1.
+- **api-service** — FastAPI: thin routes, repositories own SQL/ORM, services orchestrate intake and reads. **`POST /tickets`** creates a ticket in `pending_embedding` and returns quickly; **no AI provider calls** on the API path.
+- **ai-worker** — Polls `pending_embedding` tickets; provider interface defaults to **`mock`**. Optional **`openai`** (`text-embedding-3-small`, `gpt-4.1-mini`) requires `OPENAI_API_KEY` from environment only.
+- **shared-contracts** — Taxonomies (`TicketCategory`, `SupportTeam`, `TicketPriority`), `ClassificationOutput`, observability DTOs. No SQLAlchemy or provider SDKs in this package.
 
 ## Data authority and cache
 
-- **Postgres** is the **authoritative** store for tickets, embeddings, routing decisions, and audit events.
-- **Redis** is **non-authoritative** (ephemeral). It is **not** used for ticket state, caching, or queues in Phase 2—readiness probe only.
-- **pgvector** is enabled locally via `pgvector/pgvector:pg16`, init script under `docker/postgres/init/`, and Alembic `CREATE EXTENSION vector`. Embeddings live in `ticket_embeddings` (separate table); similarity search uses cosine distance on **active** rows only.
+- **Postgres** is authoritative for tickets, embeddings, routing decisions, audit events, and **draft suggestions**.
+- **Redis** is non-authoritative (readiness probe only). **No caching or queues** in Phase 3.
+- **pgvector** + HNSW cosine index on `ticket_embeddings`; similarity search uses **active** rows only, excludes current ticket, filters by compatible model/dimension.
 
-## Readiness semantics (`GET /ready`)
+## HTTP surface (api-service)
 
-- **Postgres failure** → HTTP **503** with JSON body (`code: postgres_unavailable`, includes best-effort `redis` flag).
-- **Redis failure** with healthy Postgres → HTTP **200** and `ReadinessResponse` with `degraded: true`, `redis: false` (cache loss must not fail readiness for authoritative intake later).
+| Method | Path | Notes |
+|--------|------|--------|
+| `POST` | `/tickets` | Intake → `pending_embedding` |
+| `GET` | `/tickets/{id}` | Ticket read |
+| `GET` | `/tickets/{id}/status`, `/events`, `/routing-decision`, `/draft-suggestion` | Status, audit, routing, latest draft |
+| `POST` | `/tickets/similar` | Caller-provided query vector only |
+| `POST` | `/tickets/{id}/embeddings/test` | **Phase 2 local scaffolding only** — not production embedding path |
 
-## HTTP surface (Phase 2)
+Production embeddings are written by **ai-worker** through `EmbeddingService` + repositories.
 
-- `GET /health` — liveness (`HealthResponse`).
-- `GET /ready` — dependency readiness (`ReadinessResponse`).
-- `POST /tickets` — create ticket (`pending_embedding`) + `ticket_received` audit event.
-- `GET /tickets/{id}` — fetch ticket.
-- `GET /tickets/{id}/status`, `/events`, `/routing-decision` — status, audit trail, latest routing.
-- `POST /tickets/similar` — similarity search; **caller-provided embedding only** (no generation).
-- `POST /tickets/{id}/embeddings/test` — local scaffolding to persist a provided vector.
+## Worker AI pipeline
 
-## Failure-mode assumptions (forward-looking)
-
-Later phases will add: idempotent workers, deduplicated ticket intake, cache invalidation, and auditability. Phase 1 does not implement these behaviors.
-
-## Observability
-
-- **structlog** JSON logs; `X-Request-ID` on requests/responses; `http.access` events from access middleware.
-- `app/core/telemetry.py` remains a stub; optional `observability` extra in `api-service` for future OpenTelemetry.
+1. **Embedding** — OpenAI `text-embedding-3-small` (1536) or mock; skip regeneration when `source_text_hash` unchanged; store model name and dimension on every row.
+2. **Classification** — Structured JSON; persist `category`, `team`, `priority`, `escalation` routing rows. Tiered confidence: &lt;0.60 → unknown/triage; 0.60–0.79 → human review; routing confidence &lt;0.80 → triage.
+3. **Retrieval** — top_k=5, cosine distance ≤0.30 usable, exclude tickets older than 180 days; weak-only matches skip draft.
+4. **Draft** — Only with usable context; always `pending_review`; never auto-send.
+5. Status → `routed` or `failed`; observability metadata in logs/events (no full ticket/draft text).
 
 ## Migrations
 
-- **Alembic** revision `phase2_ticket_persistence`: extension `vector`, tables `tickets`, `ticket_embeddings`, `routing_decisions`, `ticket_events`. Runtime services do not require Alembic in the default Docker image (`uv sync --frozen --no-dev`).
+- `phase2_ticket_persistence` — core tables + pgvector.
+- `phase3_draft_suggestions` — `draft_suggestions` with one `pending_review` row per ticket (partial unique index).
+- `phase3_routing_category` — `category` allowed in `routing_decisions.decision_type`.
 
-## Non-goals (Phase 2)
+## Non-goals (Phase 3)
 
-No AI provider calls, embedding generation, classifier, suggestions, routing **algorithm**, Redis caching/queues, worker job processing, auth, org/user models, frontend, or deployment automation.
+No frontend, deployment automation, auth, Redis caching, production queue infrastructure, hardcoded API keys, or final product policy (thresholds, taxonomy, prompts are placeholders). Real providers must be disabled by default (`AI_PROVIDER=mock`).

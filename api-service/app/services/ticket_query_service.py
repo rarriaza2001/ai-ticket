@@ -3,9 +3,11 @@ from __future__ import annotations
 import uuid
 
 from app.core.errors import TicketNotFound
+from app.db.models.draft_suggestion import DraftSuggestion
 from app.db.models.routing_decision import RoutingDecision
 from app.db.models.ticket import Ticket
 from app.db.models.ticket_event import TicketEvent
+from app.repositories.draft_suggestion_repository import DraftSuggestionRepository
 from app.repositories.routing_decision_repository import RoutingDecisionRepository
 from app.repositories.ticket_embedding_repository import (
     SimilarTicketRow,
@@ -22,11 +24,13 @@ class TicketQueryService:
         ticket_embedding_repository: TicketEmbeddingRepository,
         routing_decision_repository: RoutingDecisionRepository,
         ticket_event_repository: TicketEventRepository,
+        draft_suggestion_repository: DraftSuggestionRepository,
     ) -> None:
         self._tickets = ticket_repository
         self._embeddings = ticket_embedding_repository
         self._routing = routing_decision_repository
         self._events = ticket_event_repository
+        self._drafts = draft_suggestion_repository
 
     async def get_ticket(self, ticket_id: uuid.UUID) -> Ticket:
         ticket = await self._tickets.get_by_id(ticket_id)
@@ -60,6 +64,13 @@ class TicketQueryService:
         if await self._tickets.get_by_id(ticket_id) is None:
             raise TicketNotFound(ticket_id)
         return await self._routing.get_latest_for_ticket(ticket_id)
+
+    async def get_latest_draft_suggestion(
+        self, ticket_id: uuid.UUID
+    ) -> DraftSuggestion | None:
+        if await self._tickets.get_by_id(ticket_id) is None:
+            raise TicketNotFound(ticket_id)
+        return await self._drafts.get_latest_for_ticket(ticket_id)
 
     async def get_audit_trail(self, ticket_id: uuid.UUID) -> list[TicketEvent]:
         if await self._tickets.get_by_id(ticket_id) is None:

@@ -127,3 +127,18 @@ class TicketEmbeddingResponse(BaseModel):
     is_active: bool
     embedded_at: datetime
     created_at: datetime
+
+
+class DraftSuggestionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    ticket_id: uuid.UUID
+    draft_text: str
+    provider_name: str
+    model_name: str
+    prompt_version: str
+    status: str
+    confidence: Decimal | None
+    requires_human_review: bool
+    created_at: datetime

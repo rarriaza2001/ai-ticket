@@ -5,6 +5,7 @@ import redis.asyncio as redis
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.repositories.draft_suggestion_repository import DraftSuggestionRepository
 from app.repositories.health_repository import HealthRepository
 from app.repositories.routing_decision_repository import RoutingDecisionRepository
 from app.repositories.ticket_embedding_repository import TicketEmbeddingRepository
@@ -54,6 +55,12 @@ def get_ticket_event_repository(
     return TicketEventRepository(session)
 
 
+def get_draft_suggestion_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> DraftSuggestionRepository:
+    return DraftSuggestionRepository(session)
+
+
 def get_ticket_intake_service(
     tickets: TicketRepository = Depends(get_ticket_repository),
     events: TicketEventRepository = Depends(get_ticket_event_repository),
@@ -66,8 +73,9 @@ def get_ticket_query_service(
     embeddings: TicketEmbeddingRepository = Depends(get_ticket_embedding_repository),
     routing: RoutingDecisionRepository = Depends(get_routing_decision_repository),
     events: TicketEventRepository = Depends(get_ticket_event_repository),
+    drafts: DraftSuggestionRepository = Depends(get_draft_suggestion_repository),
 ) -> TicketQueryService:
-    return TicketQueryService(tickets, embeddings, routing, events)
+    return TicketQueryService(tickets, embeddings, routing, events, drafts)
 
 
 def get_embedding_persistence_service(

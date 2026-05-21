@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import os
-import uuid
+import sys
 from collections.abc import AsyncGenerator, Generator
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.config import Settings
-from app.core.embedding import EMBEDDING_DIMENSION
-from app.db.session import create_session_factory
-from app.main import create_app
+ROOT = Path(__file__).resolve().parents[2]
+API_SERVICE = ROOT / "api-service"
+if str(API_SERVICE) not in sys.path:
+    sys.path.insert(0, str(API_SERVICE))
 
 DEFAULT_DATABASE_URL = "postgresql://ticket:ticket@localhost:5433/tickets"
 
@@ -38,12 +38,18 @@ def database_url() -> str:
 @pytest.fixture(scope="session", autouse=True)
 def run_migrations(database_url: str) -> Generator[None, None, None]:
     os.environ["DATABASE_URL"] = database_url
+    os.chdir(API_SERVICE)
     from alembic import command
     from alembic.config import Config
 
     cfg = Config("alembic.ini")
     command.upgrade(cfg, "head")
     yield
+
+
+@pytest.fixture(autouse=True)
+def force_mock_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AI_PROVIDER", "mock")
 
 
 @pytest_asyncio.fixture
@@ -57,11 +63,15 @@ async def engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
 async def session_factory(
     engine: AsyncEngine,
 ) -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
+    from worker.db.session import create_session_factory
+
     yield create_session_factory(engine)
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def clean_tables(session_factory: async_sessionmaker[AsyncSession]) -> AsyncGenerator[None, None]:
+async def clean_tables(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncGenerator[None, None]:
     async with session_factory() as session:
         await session.execute(
             text(
@@ -81,43 +91,19 @@ async def db_session(
         yield session
 
 
-@pytest_asyncio.fixture
-async def client(
-    session_factory: async_sessionmaker[AsyncSession],
-) -> AsyncGenerator[AsyncClient, None]:
-    from unittest.mock import AsyncMock, MagicMock
+@pytest.fixture
+def mock_provider():
+    from worker.providers.mock_provider import MockAiProvider
 
-    app = create_app()
-    app.state.session_factory = session_factory
-    mock_redis = MagicMock()
-    mock_redis.ping = AsyncMock(return_value=True)
-    mock_redis.aclose = AsyncMock()
-    app.state.redis = mock_redis
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    return MockAiProvider()
 
 
 @pytest.fixture
-def fake_embedding() -> list[float]:
-    """Deterministic unit vector slice for tests (no AI)."""
-    vec = [0.0] * EMBEDDING_DIMENSION
-    vec[0] = 1.0
-    return vec
-
-
-@pytest.fixture
-def fake_embedding_alt() -> list[float]:
-    vec = [0.0] * EMBEDDING_DIMENSION
-    vec[1] = 1.0
-    return vec
-
-
-@pytest.fixture
-def settings_override(database_url: str, monkeypatch: pytest.MonkeyPatch) -> Settings:
+def worker_settings(database_url: str, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-    from app.core.config import get_settings
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    from worker.core.config import get_settings
 
     get_settings.cache_clear()
     return get_settings()

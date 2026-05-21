@@ -1,0 +1,7 @@
+Classify the support ticket. Output JSON only with fields:
+category (billing|account_access|technical_issue|bug_report|feature_request|security|general_support|unknown)
+team (triage|billing_support|technical_support|account_support|security_review|customer_success)
+priority (low|normal|high|urgent)
+escalation (none or short label)
+classification_confidence (0-1)
+routing_confidence (0-1)

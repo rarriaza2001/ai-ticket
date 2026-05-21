@@ -4,17 +4,17 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import DateTime, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from worker.db.base import Base
 
 if TYPE_CHECKING:
-    from app.db.models.draft_suggestion import DraftSuggestion
-    from app.db.models.routing_decision import RoutingDecision
-    from app.db.models.ticket_embedding import TicketEmbedding
-    from app.db.models.ticket_event import TicketEvent
+    from worker.db.models.draft_suggestion import DraftSuggestion
+    from worker.db.models.routing_decision import RoutingDecision
+    from worker.db.models.ticket_embedding import TicketEmbedding
+    from worker.db.models.ticket_event import TicketEvent
 
 
 class Ticket(Base):

@@ -10,13 +10,6 @@ class TicketStatus(StrEnum):
     FAILED = "failed"
 
 
-class TicketPriority(StrEnum):
-    LOW = "low"
-    NORMAL = "normal"
-    HIGH = "high"
-    URGENT = "urgent"
-
-
 class RoutingDecisionType(StrEnum):
     CATEGORY = "category"
     TEAM = "team"

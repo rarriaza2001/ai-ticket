@@ -1,0 +1,2 @@
+Draft a suggested customer reply for human review only. Never auto-send.
+Use similar ticket subjects as context. Output JSON with draft_text, optional summary and key_points.

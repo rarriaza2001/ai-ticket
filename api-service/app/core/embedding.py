@@ -5,4 +5,4 @@
 EMBEDDING_DIMENSION = 1536
 
 # Placeholder model name for local persistence and tests only.
-DEFAULT_EMBEDDING_MODEL = "persistence-placeholder"
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"

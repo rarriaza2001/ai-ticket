@@ -27,11 +27,18 @@ async def test_migration_creates_tables_and_vector_extension(
         text(
             "SELECT tablename FROM pg_tables "
             "WHERE schemaname = 'public' AND tablename IN "
-            "('tickets', 'ticket_embeddings', 'routing_decisions', 'ticket_events')"
+            "('tickets', 'ticket_embeddings', 'routing_decisions', 'ticket_events', "
+            "'draft_suggestions')"
         )
     )
     names = {row[0] for row in tables.all()}
-    assert names == {"tickets", "ticket_embeddings", "routing_decisions", "ticket_events"}
+    assert names == {
+        "tickets",
+        "ticket_embeddings",
+        "routing_decisions",
+        "ticket_events",
+        "draft_suggestions",
+    }
 
     ext = await db_session.execute(
         text("SELECT extname FROM pg_extension WHERE extname = 'vector'")
