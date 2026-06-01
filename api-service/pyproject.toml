@@ -59,3 +59,6 @@ select = ["E", "F", "I", "UP"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "benchmark_tooling: Phase 4 seed/benchmark script unit tests (fast, no HTTP benchmark)",
+]

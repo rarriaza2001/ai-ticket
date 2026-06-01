@@ -9,6 +9,7 @@ from worker.domain.enums import DecidedBy, RoutingDecisionType, TicketEventType,
 from worker.providers.base import AiProvider
 from worker.providers.errors import MalformedModelOutput
 from worker.prompts import PROMPT_VERSION, load_classification_prompt
+from worker.cache.ticket_cache_invalidator import TicketCacheInvalidator
 from worker.repositories.routing_decision_repository import RoutingDecisionRepository
 from worker.repositories.ticket_event_repository import TicketEventRepository
 from worker.repositories.ticket_repository import TicketRepository
@@ -31,12 +32,14 @@ class ClassificationService:
         tickets: TicketRepository,
         routing: RoutingDecisionRepository,
         events: TicketEventRepository,
+        cache_invalidator: TicketCacheInvalidator | None = None,
     ) -> None:
         self._provider = provider
         self._settings = settings
         self._tickets = tickets
         self._routing = routing
         self._events = events
+        self._cache_invalidator = cache_invalidator
 
     async def classify_and_persist(self, ticket: Ticket) -> tuple[ParsedClassification, float]:
         prepared = prepare_ticket_text(ticket.subject, ticket.body)
@@ -125,4 +128,8 @@ class ClassificationService:
                 "prompt_version": PROMPT_VERSION,
             },
         )
+        if self._cache_invalidator is not None:
+            await self._cache_invalidator.invalidate_routing(ticket.id)
+            await self._cache_invalidator.invalidate_status(ticket.id)
+            await self._cache_invalidator.invalidate_events(ticket.id)
         return parsed, latency_ms

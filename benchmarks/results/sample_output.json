@@ -1,0 +1,12 @@
+{
+  "_note": "Schema example only — replace by copying a real run to sample_output.json (see README.md). Values below are placeholders, not measurements.",
+  "timestamp_utc": "1970-01-01T00:00:00+00:00",
+  "mode": "warm-cache",
+  "dataset_size": "medium",
+  "dataset_ticket_count": 250,
+  "iterations": 0,
+  "warmup": 0,
+  "base_url": "http://localhost:8000",
+  "manifest_path": "benchmarks/results/last_seed_manifest.json",
+  "endpoints": {}
+}

@@ -4,9 +4,12 @@ import time
 import uuid
 
 import structlog
+import redis.asyncio as redis
 from shared_contracts import AiPipelineObservability
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from worker.cache.redis_cache_store import RedisCacheStore
+from worker.cache.ticket_cache_invalidator import TicketCacheInvalidator
 from worker.core.config import Settings
 from worker.domain.enums import TicketEventType, TicketStatus
 from worker.providers.base import AiProvider
@@ -30,10 +33,21 @@ class AiWorkflowService:
         session: AsyncSession,
         settings: Settings,
         provider: AiProvider | None = None,
+        redis_client: redis.Redis | None = None,
+        cache_invalidator: TicketCacheInvalidator | None = None,
     ) -> None:
         self._session = session
         self._settings = settings
         self._provider = provider or create_ai_provider(settings)
+
+        if cache_invalidator is None and redis_client is not None:
+            cache_store = RedisCacheStore(
+                redis_client,
+                enabled=settings.cache_enabled,
+                delete_invalid_on_read=settings.cache_delete_invalid_on_read,
+            )
+            cache_invalidator = TicketCacheInvalidator(cache_store)
+        self._cache_invalidator = cache_invalidator
 
         tickets = TicketRepository(session)
         embeddings = TicketEmbeddingRepository(session)
@@ -49,6 +63,7 @@ class AiWorkflowService:
             tickets=tickets,
             embeddings=embeddings,
             events=events,
+            cache_invalidator=cache_invalidator,
         )
         self._classification_svc = ClassificationService(
             provider=self._provider,
@@ -56,6 +71,7 @@ class AiWorkflowService:
             tickets=tickets,
             routing=routing,
             events=events,
+            cache_invalidator=cache_invalidator,
         )
         self._retrieval_svc = RetrievalService(
             settings=settings,
@@ -67,6 +83,7 @@ class AiWorkflowService:
             settings=settings,
             drafts=drafts,
             events=events,
+            cache_invalidator=cache_invalidator,
         )
 
     async def process_ticket(self, ticket_id: uuid.UUID) -> None:
@@ -85,6 +102,8 @@ class AiWorkflowService:
                 TicketEventType.AI_PROCESSING_STARTED.value,
                 payload={"status": ticket.status},
             )
+            if self._cache_invalidator is not None:
+                await self._cache_invalidator.invalidate_events(ticket_id)
 
             query_vec, embedding_model, embedding_dimension, provider_name, embed_ms = (
                 await self._embedding_svc.ensure_embedding(ticket)
@@ -136,6 +155,8 @@ class AiWorkflowService:
                 TicketEventType.AI_PROCESSING_COMPLETED.value,
                 payload=payload,
             )
+            if self._cache_invalidator is not None:
+                await self._cache_invalidator.invalidate_ticket_read_models(ticket_id)
 
             logger.info("ai.workflow.completed", ticket_id=str(ticket_id), **payload)
         except Exception as exc:
@@ -148,6 +169,9 @@ class AiWorkflowService:
                     "message": str(exc)[:200],
                 },
             )
+            if self._cache_invalidator is not None:
+                await self._cache_invalidator.invalidate_status(ticket_id)
+                await self._cache_invalidator.invalidate_events(ticket_id)
             logger.exception(
                 "ai.workflow.failed",
                 ticket_id=str(ticket_id),

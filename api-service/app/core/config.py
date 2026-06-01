@@ -33,6 +33,29 @@ class Settings(BaseSettings):
         default=5.0, validation_alias="REDIS_SOCKET_TIMEOUT_SECONDS"
     )
 
+    cache_enabled: bool = Field(default=True, validation_alias="CACHE_ENABLED")
+    cache_delete_invalid_on_read: bool = Field(
+        default=True, validation_alias="CACHE_DELETE_INVALID_ON_READ"
+    )
+    cache_ttl_status_seconds: int = Field(
+        default=60, validation_alias="CACHE_TTL_STATUS_SECONDS"
+    )
+    cache_ttl_routing_seconds: int = Field(
+        default=600, validation_alias="CACHE_TTL_ROUTING_SECONDS"
+    )
+    cache_ttl_draft_seconds: int = Field(
+        default=300, validation_alias="CACHE_TTL_DRAFT_SECONDS"
+    )
+    cache_ttl_events_seconds: int = Field(
+        default=30, validation_alias="CACHE_TTL_EVENTS_SECONDS"
+    )
+    cache_ttl_similarity_seconds: int = Field(
+        default=300, validation_alias="CACHE_TTL_SIMILARITY_SECONDS"
+    )
+    cache_events_max_items: int = Field(
+        default=50, validation_alias="CACHE_EVENTS_MAX_ITEMS"
+    )
+
     @property
     def sqlalchemy_async_url(self) -> str:
         """Async SQLAlchemy URL (asyncpg driver)."""

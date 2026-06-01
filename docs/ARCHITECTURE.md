@@ -1,4 +1,4 @@
-# Architecture — Phase 3 AI scaffolding
+# Architecture — Phase 4 Redis caching
 
 ## Service boundaries
 
@@ -19,13 +19,28 @@ flowchart LR
 
 - **api-service** — FastAPI: thin routes, repositories own SQL/ORM, services orchestrate intake and reads. **`POST /tickets`** creates a ticket in `pending_embedding` and returns quickly; **no AI provider calls** on the API path.
 - **ai-worker** — Polls `pending_embedding` tickets; provider interface defaults to **`mock`**. Optional **`openai`** (`text-embedding-3-small`, `gpt-4.1-mini`) requires `OPENAI_API_KEY` from environment only.
-- **shared-contracts** — Taxonomies (`TicketCategory`, `SupportTeam`, `TicketPriority`), `ClassificationOutput`, observability DTOs. No SQLAlchemy or provider SDKs in this package.
+- **shared-contracts** — Taxonomies, `ClassificationOutput`, observability DTOs, and **cache key builders + JSON cache DTOs** (`shared_contracts/cache_keys.py`, `cache_dtos.py`). No Redis client in this package.
 
 ## Data authority and cache
 
 - **Postgres** is authoritative for tickets, embeddings, routing decisions, audit events, and **draft suggestions**.
-- **Redis** is non-authoritative (readiness probe only). **No caching or queues** in Phase 3.
-- **pgvector** + HNSW cosine index on `ticket_embeddings`; similarity search uses **active** rows only, excludes current ticket, filters by compatible model/dimension.
+- **Redis** is non-authoritative: readiness probe + **fail-open read cache** (Phase 4). Cache miss or Redis error always falls back to Postgres.
+- **pgvector** remains the similarity engine; Redis caches **similarity result sets** by query/filter hash (TTL 5m), not raw authoritative embeddings.
+- Cache namespace: `ai-ticket:v1:...` (see `shared_contracts/cache_keys.py`).
+
+### Cache-aside (api-service)
+
+| Cached read | Key family | Default TTL |
+|-------------|------------|-------------|
+| Ticket status | `ticket:{id}:status` | 60s |
+| Latest routing | `ticket:{id}:routing:latest` | 10m |
+| Latest draft | `ticket:{id}:draft:latest` | 5m |
+| Events summary (no payloads) | `ticket:{id}:events` | 30s |
+| Similarity results | `similarity:{model}:{dim}:{query_hash}:{filters_hash}` | 5m |
+
+**Invalidation:** ai-worker and api-service mutation paths **delete** ticket read-model keys after durable Postgres writes. Similarity keys expire by TTL only.
+
+**Not cached:** full `GET /tickets/{id}` ticket body; raw embedding vectors as primary cache strategy.
 
 ## HTTP surface (api-service)
 
@@ -53,6 +68,6 @@ Production embeddings are written by **ai-worker** through `EmbeddingService` + 
 - `phase3_draft_suggestions` — `draft_suggestions` with one `pending_review` row per ticket (partial unique index).
 - `phase3_routing_category` — `category` allowed in `routing_decisions.decision_type`.
 
-## Non-goals (Phase 3)
+## Non-goals (still out of scope)
 
-No frontend, deployment automation, auth, Redis caching, production queue infrastructure, hardcoded API keys, or final product policy (thresholds, taxonomy, prompts are placeholders). Real providers must be disabled by default (`AI_PROVIDER=mock`).
+No frontend, deployment automation, auth, production queue infrastructure, Redis vector search replacement, hardcoded API keys, or final product policy. Real providers must be disabled by default (`AI_PROVIDER=mock`).

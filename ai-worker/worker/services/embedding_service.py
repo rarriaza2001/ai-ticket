@@ -5,9 +5,9 @@ import time
 from typing import TYPE_CHECKING
 
 from worker.core.config import Settings
-from worker.core.embedding import DEFAULT_EMBEDDING_MODEL
 from worker.domain.enums import TicketEventType, TicketStatus
 from worker.providers.base import AiProvider
+from worker.cache.ticket_cache_invalidator import TicketCacheInvalidator
 from worker.repositories.ticket_embedding_repository import TicketEmbeddingRepository
 from worker.repositories.ticket_event_repository import TicketEventRepository
 from worker.repositories.ticket_repository import TicketRepository
@@ -42,12 +42,14 @@ class EmbeddingService:
         tickets: TicketRepository,
         embeddings: TicketEmbeddingRepository,
         events: TicketEventRepository,
+        cache_invalidator: TicketCacheInvalidator | None = None,
     ) -> None:
         self._provider = provider
         self._settings = settings
         self._tickets = tickets
         self._embeddings = embeddings
         self._events = events
+        self._cache_invalidator = cache_invalidator
 
     async def ensure_embedding(
         self, ticket: Ticket
@@ -100,6 +102,9 @@ class EmbeddingService:
                 "source_text_hash": text_hash,
             },
         )
+        if self._cache_invalidator is not None:
+            await self._cache_invalidator.invalidate_status(ticket.id)
+            await self._cache_invalidator.invalidate_events(ticket.id)
         return (
             result.vector,
             model_name,

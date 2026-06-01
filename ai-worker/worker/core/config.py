@@ -25,6 +25,11 @@ class Settings(BaseSettings):
         default=5.0, validation_alias="REDIS_SOCKET_TIMEOUT_SECONDS"
     )
 
+    cache_enabled: bool = Field(default=True, validation_alias="CACHE_ENABLED")
+    cache_delete_invalid_on_read: bool = Field(
+        default=True, validation_alias="CACHE_DELETE_INVALID_ON_READ"
+    )
+
     ai_provider: str = Field(default="mock", validation_alias="AI_PROVIDER")
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
 

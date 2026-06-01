@@ -1,0 +1,3 @@
+# Generated benchmark outputs (do not commit measured runs)
+*.json
+!sample_output.json

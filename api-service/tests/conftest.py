@@ -89,9 +89,27 @@ async def client(
 
     app = create_app()
     app.state.session_factory = session_factory
+    store: dict[str, str] = {}
     mock_redis = MagicMock()
     mock_redis.ping = AsyncMock(return_value=True)
     mock_redis.aclose = AsyncMock()
+
+    async def _get(key: str):
+        return store.get(key)
+
+    async def _set(key: str, value: str, ex: int | None = None):
+        store[key] = value
+        return True
+
+    async def _delete(*keys: str):
+        for key in keys:
+            store.pop(key, None)
+        return len(keys)
+
+    mock_redis.get = AsyncMock(side_effect=_get)
+    mock_redis.set = AsyncMock(side_effect=_set)
+    mock_redis.delete = AsyncMock(side_effect=_delete)
+    mock_redis._store = store
     app.state.redis = mock_redis
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

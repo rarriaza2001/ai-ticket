@@ -10,6 +10,7 @@ from worker.domain.enums import TicketEventType
 from worker.prompts import PROMPT_VERSION, load_suggestion_prompt
 from worker.providers.base import AiProvider, SimilarTicketContext
 from worker.services.text_preparation import prepare_ticket_text
+from worker.cache.ticket_cache_invalidator import TicketCacheInvalidator
 from worker.repositories.draft_suggestion_repository import DraftSuggestionRepository
 from worker.repositories.ticket_embedding_repository import SimilarTicketRow
 from worker.repositories.ticket_event_repository import TicketEventRepository
@@ -24,11 +25,13 @@ class SuggestionService:
         settings: Settings,
         drafts: DraftSuggestionRepository,
         events: TicketEventRepository,
+        cache_invalidator: TicketCacheInvalidator | None = None,
     ) -> None:
         self._provider = provider
         self._settings = settings
         self._drafts = drafts
         self._events = events
+        self._cache_invalidator = cache_invalidator
 
     async def maybe_create_suggestion(
         self,
@@ -89,4 +92,7 @@ class SuggestionService:
                 "usable_context_count": len(usable_matches),
             },
         )
+        if self._cache_invalidator is not None:
+            await self._cache_invalidator.invalidate_draft(ticket.id)
+            await self._cache_invalidator.invalidate_events(ticket.id)
         return True, latency_ms

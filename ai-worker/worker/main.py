@@ -40,7 +40,7 @@ async def run() -> None:
                     limit=settings.worker_batch_size,
                 )
                 for ticket in pending:
-                    workflow = AiWorkflowService(session, settings)
+                    workflow = AiWorkflowService(session, settings, redis_client=redis_client)
                     try:
                         await workflow.process_ticket(ticket.id)
                         await session.commit()

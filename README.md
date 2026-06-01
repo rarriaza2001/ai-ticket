@@ -1,12 +1,12 @@
-# AI Support Ticket Triage — Phase 3 AI scaffolding
+# AI Support Ticket Triage — Phase 4 Redis caching
 
 Two Python services plus **neutral** shared schemas:
 
-- **`api-service/`** — FastAPI: health/readiness, **thin ticket intake and reads** (`POST /tickets` stays fast; no AI providers on the API path).
-- **`ai-worker/`** — Background AI workflow: polls `pending_embedding` tickets, embed/classify/retrieve/suggest via provider interface (`mock` default, optional `openai`), persists to Postgres.
-- **`shared-contracts/`** — Health/readiness plus taxonomies (`TicketCategory`, `SupportTeam`, `TicketPriority`), `ClassificationOutput`, and observability DTOs.
+- **`api-service/`** — FastAPI: health/readiness, **thin ticket intake and reads** (`POST /tickets` stays fast; no AI providers on the API path). Phase 4 adds **fail-open Redis cache-aside** on read endpoints and similarity search.
+- **`ai-worker/`** — Background AI workflow: polls `pending_embedding` tickets, embed/classify/retrieve/suggest via provider interface (`mock` default, optional `openai`), persists to Postgres. Invalidates API read-model cache keys after durable writes.
+- **`shared-contracts/`** — Health/readiness, taxonomies, AI DTOs, and **cache key helpers + JSON cache DTOs** (`ai-ticket:v1:...`).
 
-Postgres is **authoritative** for ticket data. Redis is **non-authoritative** (readiness probe only; no caching in Phase 3).
+Postgres is **authoritative** for ticket data. Redis is **non-authoritative** (readiness + ephemeral read cache; failures fall back to Postgres).
 
 ## Local development (Docker Compose)
 
@@ -87,9 +87,57 @@ Tickets stay **`routed`** after processing. Use **`requires_human_review`** on d
 
 Required for both services: **`DATABASE_URL`**, **`REDIS_URL`**.
 
-Optional: `LOG_LEVEL`, `ENV`, `SERVICE_NAME`, and pool tuning `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT_SECONDS` (api-service; see [`app/core/config.py`](api-service/app/core/config.py)).
+Optional: `LOG_LEVEL`, `ENV`, `SERVICE_NAME`, pool tuning, and Phase 4 cache TTLs (`CACHE_ENABLED`, `CACHE_TTL_*`; see [`app/core/config.py`](api-service/app/core/config.py)).
 
 Examples: [`docker/.env.example`](docker/.env.example), [`infrastructure/env/.env.example`](infrastructure/env/.env.example).
+
+## Phase 4 cache benchmarks (local, manual)
+
+Full guide: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). Results land in [`benchmarks/results/`](benchmarks/results/) (gitignored except optional `sample_output.json`).
+
+### 1. Start stack and migrate
+
+```bash
+docker compose -f docker/docker-compose.yml --env-file docker/.env.example up --build
+
+cd api-service
+# PowerShell: $env:DATABASE_URL="postgresql://ticket:ticket@localhost:5433/tickets"
+export DATABASE_URL=postgresql://ticket:ticket@localhost:5433/tickets
+alembic upgrade head   # or: uv run alembic upgrade head
+```
+
+### 2. Seed benchmark data
+
+```bash
+# From api-service/ (or repo root with PYTHONPATH)
+python ../scripts/seed_phase4_benchmark_data.py --size small --reset    # 25
+python ../scripts/seed_phase4_benchmark_data.py --size medium --reset   # 250 (default)
+python ../scripts/seed_phase4_benchmark_data.py --size large --reset    # 1000
+```
+
+Makefile: `make seed-phase4-medium`, `make seed-phase4-small`, `make clear-phase4`.
+
+Writes `benchmarks/results/last_seed_manifest.json` for the runner. No OpenAI; Postgres only.
+
+### 3. Run benchmarks (api-service must be up)
+
+Measured JSON only (p50/p95/p99, avg, min, max, cache hits) — no fabricated speedups:
+
+```bash
+# Baseline — restart api-service with CACHE_ENABLED=false first
+python ../scripts/benchmark_phase4_cache.py --mode baseline --iterations 100
+
+# Cold cache — flushes ai-ticket:v1:* then measures
+python ../scripts/benchmark_phase4_cache.py --mode cold-cache --iterations 100
+
+# Warm cache — warmup then measure
+python ../scripts/benchmark_phase4_cache.py --mode warm-cache --warmup 20 --iterations 100
+
+# Redis down — docker compose stop redis; fail-open fallback
+python ../scripts/benchmark_phase4_cache.py --mode redis-down --iterations 50
+```
+
+Endpoints: `GET .../status`, `routing-decision`, `draft-suggestion`, `events`, `POST /tickets/similar`.
 
 ## Migrations (Phase 2 schema)
 

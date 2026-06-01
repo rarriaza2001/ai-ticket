@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from app.cache.ticket_cache_invalidator import TicketCacheInvalidator
 from app.core.embedding import DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMENSION
 from app.core.errors import TicketNotFound
 from app.db.models.ticket_embedding import TicketEmbedding
@@ -17,10 +18,12 @@ class EmbeddingPersistenceService:
         ticket_repository: TicketRepository,
         ticket_embedding_repository: TicketEmbeddingRepository,
         ticket_event_repository: TicketEventRepository,
+        cache_invalidator: TicketCacheInvalidator | None = None,
     ) -> None:
         self._tickets = ticket_repository
         self._embeddings = ticket_embedding_repository
         self._events = ticket_event_repository
+        self._cache_invalidator = cache_invalidator
 
     async def store_ticket_embedding(
         self,
@@ -52,4 +55,7 @@ class EmbeddingPersistenceService:
                 "embedding_dimension": embedding_dimension,
             },
         )
+        if self._cache_invalidator is not None:
+            await self._cache_invalidator.invalidate_status(ticket_id)
+            await self._cache_invalidator.invalidate_events(ticket_id)
         return row
