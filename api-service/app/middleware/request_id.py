@@ -5,7 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.cache.redis_cache_store import get_last_cache_result, reset_last_cache_result
+from app.cache.redis_cache_store import reset_last_cache_result
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -19,9 +19,6 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         try:
             response: Response = await call_next(request)
             response.headers["X-Request-ID"] = request_id
-            cache_result = get_last_cache_result(request)
-            if cache_result is not None:
-                response.headers["X-Cache-Hit"] = "1" if cache_result else "0"
             return response
         finally:
             structlog.contextvars.clear_contextvars()

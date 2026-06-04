@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.cache.redis_cache_store import get_last_cache_result, reset_last_cache_result
 
 
 class CacheHeadersMiddleware:
-    """Pure ASGI middleware so contextvars from cache reads propagate to response headers."""
+    """Pure ASGI middleware so cache reads propagate to X-Cache-Hit response headers."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -18,11 +19,12 @@ class CacheHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
-        reset_last_cache_result()
+        request = Request(scope)
+        reset_last_cache_result(request)
 
         async def send_wrapper(message: dict) -> None:
             if message["type"] == "http.response.start":
-                result = get_last_cache_result()
+                result = get_last_cache_result(request)
                 if result is not None:
                     headers = list(message.get("headers", []))
                     headers.append((b"x-cache-hit", b"1" if result else b"0"))

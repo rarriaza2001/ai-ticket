@@ -43,14 +43,25 @@ python ../scripts/clear_phase4_benchmark_data.py
 
 | Mode | Setup |
 |------|--------|
-| `baseline` | Restart api-service with `CACHE_ENABLED=false` |
-| `cold-cache` | `CACHE_ENABLED=true`; runner flushes `ai-ticket:v1:*` before measure |
-| `warm-cache` | `CACHE_ENABLED=true`; `--warmup 20` then measure |
-| `redis-down` | Stop Redis container; API falls back to Postgres (fail-open) |
+| `baseline` | `make rebuild-api-baseline` then run benchmark (no `X-Cache-Hit` headers) |
+| `cold-cache` | `make rebuild-api-cached`; runner flushes `ai-ticket:v1:*` before measure |
+| `warm-cache` | `make rebuild-api-cached`; `--warmup 20` then measure |
+| `redis-down` | Runner stops the Redis container automatically (use `--no-manage-redis` to skip) |
 
 Aliases: `uncached` → `baseline`, `cold` → `cold-cache`, `warm` → `warm-cache`.
 
 ## Run benchmarks
+
+Makefile targets rebuild api-service with the correct cache env, then measure:
+
+```bash
+make benchmark-baseline      # CACHE_ENABLED=false, no X-Cache-Hit headers
+make benchmark-cold-cache
+make benchmark-warm-cache
+make benchmark-redis-down    # stops/restarts Redis automatically
+```
+
+Or run the script directly (after `make rebuild-api-baseline` or `make rebuild-api-cached`):
 
 ```bash
 python ../scripts/benchmark_phase4_cache.py --mode baseline --iterations 100
@@ -59,11 +70,13 @@ python ../scripts/benchmark_phase4_cache.py --mode warm-cache --warmup 20 --iter
 python ../scripts/benchmark_phase4_cache.py --mode redis-down --iterations 50
 ```
 
+Use `--no-manage-redis` with `redis-down` when you stop Redis yourself.
+
 Results are written to `benchmarks/results/phase4_{mode}_{size}_{timestamp}.json` and printed to stdout.
 
 ## Interpreting cache headers
 
-Responses may include `X-Cache-Hit: 0` (miss) or `1` (hit) when `CACHE_ENABLED=true`. Benchmark JSON aggregates hits/misses per endpoint when headers are present.
+Responses include `X-Cache-Hit: 0` (miss) or `1` (hit) when `CACHE_ENABLED=true`. Baseline runs must omit this header entirely (`CACHE_ENABLED=false`). Benchmark JSON aggregates hits/misses per endpoint when headers are present.
 
 ## Manifest
 

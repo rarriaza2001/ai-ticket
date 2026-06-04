@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.core.embedding import EMBEDDING_DIMENSION
 from app.db.session import create_session_factory
 from app.main import create_app
+from app.middleware.cache_headers import apply_cache_headers_middleware
 
 DEFAULT_DATABASE_URL = "postgresql://ticket:ticket@localhost:5433/tickets"
 
@@ -111,7 +112,7 @@ async def client(
     mock_redis.delete = AsyncMock(side_effect=_delete)
     mock_redis._store = store
     app.state.redis = mock_redis
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=apply_cache_headers_middleware(app))
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 

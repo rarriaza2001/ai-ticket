@@ -26,6 +26,7 @@ from phase4_benchmark.manifest import SeedManifest
 from phase4_benchmark.paths import find_repo_root, manifest_path as default_manifest_path
 
 DEFAULT_DATABASE_URL = "postgresql://ticket:ticket@localhost:5433/tickets"
+DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 
 
 def async_url(sync_url: str) -> str:
@@ -210,6 +211,7 @@ async def seed_database(
 
 async def run_migrations(database_url: str, api_root: Path) -> None:
     os.environ["DATABASE_URL"] = database_url
+    os.environ.setdefault("REDIS_URL", DEFAULT_REDIS_URL)
     prev_cwd = Path.cwd()
     os.chdir(api_root)
     try:

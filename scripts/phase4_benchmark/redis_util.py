@@ -92,6 +92,30 @@ def docker_container_running(container: str = "docker-redis-1") -> bool:
     return proc.returncode == 0 and proc.stdout.strip().lower() == "true"
 
 
+def docker_stop_container(container: str = "docker-redis-1") -> bool:
+    """Stop a running container. Returns True when stop was issued successfully."""
+    if not docker_container_running(container):
+        return False
+    proc = subprocess.run(
+        ["docker", "stop", container],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode == 0
+
+
+def docker_start_container(container: str = "docker-redis-1") -> bool:
+    """Start a stopped container. Returns True when start succeeded."""
+    proc = subprocess.run(
+        ["docker", "start", container],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode == 0
+
+
 def scan_cache_keys_docker(container: str = "docker-redis-1") -> list[str]:
     proc = subprocess.run(
         ["docker", "exec", container, "redis-cli", "--scan", "--pattern", "ai-ticket:v1:*"],

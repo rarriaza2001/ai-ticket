@@ -124,16 +124,21 @@ Writes `benchmarks/results/last_seed_manifest.json` for the runner. No OpenAI; P
 Measured JSON only (p50/p95/p99, avg, min, max, cache hits) — no fabricated speedups:
 
 ```bash
-# Baseline — restart api-service with CACHE_ENABLED=false first
+make benchmark-baseline      # rebuilds api-service with CACHE_ENABLED=false
+make benchmark-cold-cache
+make benchmark-warm-cache
+make benchmark-redis-down    # stops/restarts Redis container automatically
+```
+
+Manual equivalent:
+
+```bash
+make rebuild-api-baseline
 python ../scripts/benchmark_phase4_cache.py --mode baseline --iterations 100
 
-# Cold cache — flushes ai-ticket:v1:* then measures
-python ../scripts/benchmark_phase4_cache.py --mode cold-cache --iterations 100
-
-# Warm cache — warmup then measure
+make rebuild-api-cached
 python ../scripts/benchmark_phase4_cache.py --mode warm-cache --warmup 20 --iterations 100
 
-# Redis down — docker compose stop redis; fail-open fallback
 python ../scripts/benchmark_phase4_cache.py --mode redis-down --iterations 50
 ```
 

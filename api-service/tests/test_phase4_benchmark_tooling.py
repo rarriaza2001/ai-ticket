@@ -146,7 +146,7 @@ def test_baseline_and_redis_down_invalid_flags() -> None:
 
     assert not _baseline_analysis_invalid({"status": {"cache_hits": 0, "cache_misses": 0}})
     assert _baseline_analysis_invalid({"status": {"cache_hits": 1, "cache_misses": 0}})
-    assert not _baseline_analysis_invalid({"status": {"cache_hits": 0, "cache_misses": 99}})
+    assert _baseline_analysis_invalid({"status": {"cache_hits": 0, "cache_misses": 99}})
 
 
 @pytest.mark.benchmark_tooling

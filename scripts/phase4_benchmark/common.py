@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import time
+
+import httpx
 
 DATASET_SIZES: dict[str, int] = {
     "small": 25,
@@ -76,6 +80,32 @@ def status_for_index(index: int, total: int) -> str:
     if pct < 0.95:
         return "routed"
     return "failed"
+
+
+async def wait_for_api(
+    base_url: str,
+    *,
+    timeout_seconds: float = 120.0,
+    interval_seconds: float = 1.0,
+) -> None:
+    """Poll GET /health until the API accepts connections (after container recreate)."""
+    deadline = time.monotonic() + timeout_seconds
+    health_url = f"{base_url.rstrip('/')}/health"
+    last_error: Exception | None = None
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        while time.monotonic() < deadline:
+            try:
+                response = await client.get(health_url)
+                if response.status_code == 200:
+                    return
+                last_error = RuntimeError(f"GET /health returned {response.status_code}")
+            except Exception as exc:
+                last_error = exc
+            await asyncio.sleep(interval_seconds)
+    msg = f"API not ready at {health_url} after {timeout_seconds:.0f}s"
+    if last_error is not None:
+        raise RuntimeError(msg) from last_error
+    raise RuntimeError(msg)
 
 
 def benchmark_label_for_status(status: str) -> str:

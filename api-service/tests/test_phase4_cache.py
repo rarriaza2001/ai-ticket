@@ -344,6 +344,28 @@ async def test_ticket_creation_succeeds_when_redis_delete_fails(
 
 
 @pytest.mark.asyncio
+async def test_x_cache_hit_header_on_status_double_read(
+    client: AsyncClient,
+    db_session,
+) -> None:
+    intake = TicketIntakeService(
+        TicketRepository(db_session), TicketEventRepository(db_session)
+    )
+    ticket = await intake.create_ticket(
+        source="web", subject="Cache header", body="X-Cache-Hit integration test."
+    )
+    await db_session.commit()
+
+    first = await client.get(f"/tickets/{ticket.id}/status")
+    assert first.status_code == 200
+    assert first.headers.get("x-cache-hit") == "0"
+
+    second = await client.get(f"/tickets/{ticket.id}/status")
+    assert second.status_code == 200
+    assert second.headers.get("x-cache-hit") == "1"
+
+
+@pytest.mark.asyncio
 async def test_similar_request_cache_hit(
     client: AsyncClient,
     db_session,
@@ -371,8 +393,10 @@ async def test_similar_request_cache_hit(
     body = {"embedding": fake_embedding, "limit": 10}
     r1 = await client.post("/tickets/similar", json=body)
     assert r1.status_code == 200
+    assert r1.headers.get("x-cache-hit") == "0"
     r2 = await client.post("/tickets/similar", json=body)
     assert r2.status_code == 200
+    assert r2.headers.get("x-cache-hit") == "1"
     assert r1.json() == r2.json()
 
 

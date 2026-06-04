@@ -15,10 +15,12 @@ if str(_SCRIPTS_ROOT) not in sys.path:
 
 from phase4_benchmark.common import DATASET_SIZES, resolve_size  # noqa: E402
 from phase4_benchmark.paths import find_repo_root, manifest_path as default_manifest_path  # noqa: E402
-from phase4_benchmark.seed import DEFAULT_DATABASE_URL, run_seed  # noqa: E402
+from phase4_benchmark.seed import DEFAULT_DATABASE_URL, DEFAULT_REDIS_URL, run_seed  # noqa: E402
 
 
 async def main() -> None:
+    os.environ.setdefault("DATABASE_URL", DEFAULT_DATABASE_URL)
+    os.environ.setdefault("REDIS_URL", DEFAULT_REDIS_URL)
     repo_root = find_repo_root(Path(__file__))
     api_root = repo_root / "api-service"
     if str(api_root) not in sys.path:

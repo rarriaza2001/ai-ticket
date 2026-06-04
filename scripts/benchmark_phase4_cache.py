@@ -60,6 +60,11 @@ def main() -> None:
         default=DEFAULT_REDIS_CONTAINER,
         help="Container name for redis-cli when host cannot reach REDIS_URL",
     )
+    parser.add_argument(
+        "--no-manage-redis",
+        action="store_true",
+        help="Do not stop/start the Redis container for redis-down mode",
+    )
     args = parser.parse_args()
 
     manifest_file = args.manifest_path
@@ -83,6 +88,7 @@ def main() -> None:
             output_path=output_path,
             skip_preflight=args.skip_preflight,
             docker_redis_container=args.docker_redis_container,
+            manage_redis=not args.no_manage_redis,
         )
     )
 

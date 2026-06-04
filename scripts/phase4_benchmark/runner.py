@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-from phase4_benchmark.common import deterministic_vector
+from phase4_benchmark.common import deterministic_vector, wait_for_api
 from phase4_benchmark.manifest import SeedManifest
 from phase4_benchmark.paths import (
     find_repo_root,
@@ -22,6 +22,8 @@ from phase4_benchmark.paths import (
 from phase4_benchmark.preflight import run_cache_preflight
 from phase4_benchmark.redis_util import (
     docker_container_running,
+    docker_start_container,
+    docker_stop_container,
     flush_cache_keys_with_fallback,
     ping_redis,
 )
@@ -83,6 +85,12 @@ async def bench_get(
     started = time.perf_counter()
     resp = await client.get(path)
     elapsed = (time.perf_counter() - started) * 1000
+    if resp.status_code == 404:
+        msg = (
+            f"GET {path} returned 404. Seed benchmark data first: "
+            "make seed-phase4-medium"
+        )
+        raise RuntimeError(msg)
     resp.raise_for_status()
     hit = resp.headers.get("x-cache-hit")
     stats.record(elapsed, hit=(hit == "1") if hit else None)
@@ -136,20 +144,24 @@ def build_endpoint_cache_hit_rates(endpoint_results: dict) -> dict[str, dict]:
 
 
 def _baseline_analysis_invalid(endpoint_results: dict) -> bool:
-    """Baseline must run with CACHE_ENABLED=false (no cache hits / no X-Cache-Hit: 1)."""
+    """Baseline must run with CACHE_ENABLED=false (no X-Cache-Hit headers at all)."""
     for report in endpoint_results.values():
-        if (report.get("cache_hits") or 0) > 0:
+        hits = report.get("cache_hits") or 0
+        misses = report.get("cache_misses") or 0
+        if hits > 0 or misses > 0:
             return True
     return False
 
 
 async def _redis_down_analysis_invalid_async(
     *,
-    redis_url: str,  # noqa: ARG001 — reserved for future host REDIS_URL checks
+    redis_url: str,
     docker_redis_container: str,
 ) -> bool:
-    """Invalid when the Compose Redis container is still running."""
-    return docker_container_running(docker_redis_container)
+    """Invalid when Redis is still reachable after redis-down setup."""
+    if docker_container_running(docker_redis_container):
+        return True
+    return await ping_redis(redis_url)
 
 
 def _cache_analysis_invalid(endpoint_results: dict, *, normalized: str) -> bool:
@@ -176,6 +188,7 @@ async def run_benchmark(
     output_path: Path | None = None,
     skip_preflight: bool = False,
     docker_redis_container: str = DEFAULT_REDIS_CONTAINER,
+    manage_redis: bool = True,
 ) -> dict:
     repo_root = find_repo_root()
     normalized = normalize_mode(mode)
@@ -186,6 +199,55 @@ async def run_benchmark(
     if manifest is None:
         msg = f"Seed manifest not found: {manifest_file}. Run seed_phase4_benchmark_data.py first."
         raise FileNotFoundError(msg)
+
+    redis_stopped_by_runner = False
+    if normalized == "redis-down" and manage_redis:
+        if docker_container_running(docker_redis_container):
+            print(f"Stopping {docker_redis_container} for redis-down benchmark...")
+            redis_stopped_by_runner = docker_stop_container(docker_redis_container)
+
+    try:
+        return await _run_benchmark_body(
+            repo_root=repo_root,
+            normalized=normalized,
+            manifest_file=manifest_file,
+            manifest=manifest,
+            base_url=base_url,
+            iterations=iterations,
+            warmup=warmup,
+            redis_url=redis_url,
+            output_path=output_path,
+            skip_preflight=skip_preflight,
+            docker_redis_container=docker_redis_container,
+            redis_stopped_by_runner=redis_stopped_by_runner,
+        )
+    finally:
+        if redis_stopped_by_runner:
+            print(f"Restarting {docker_redis_container}...")
+            if not docker_start_container(docker_redis_container):
+                print(
+                    f"*** WARNING: failed to restart {docker_redis_container}; "
+                    "run `docker compose -f docker/docker-compose.yml start redis` manually. ***"
+                )
+
+
+async def _run_benchmark_body(
+    *,
+    repo_root: Path,
+    normalized: str,
+    manifest_file: Path,
+    manifest: SeedManifest,
+    base_url: str,
+    iterations: int,
+    warmup: int,
+    redis_url: str,
+    output_path: Path | None,
+    skip_preflight: bool,
+    docker_redis_container: str,
+    redis_stopped_by_runner: bool,
+) -> dict:
+    print(f"Waiting for API at {base_url}...")
+    await wait_for_api(base_url)
 
     preflight_summary: dict | None = None
     if normalized in ("cold-cache", "warm-cache") and not skip_preflight:
@@ -224,9 +286,14 @@ async def run_benchmark(
             docker_redis_container=docker_redis_container,
         )
         if redis_down_invalid:
+            hint = (
+                f"Allow the runner to manage Redis (default) or stop {docker_redis_container} manually."
+                if not redis_stopped_by_runner
+                else "Redis is still reachable via REDIS_URL or another instance."
+            )
             print(
                 "\n*** WARNING: redis-down mode did not actually run with Redis unavailable. "
-                f"Stop {docker_redis_container} (and avoid a reachable REDIS_URL on the host). "
+                f"{hint} "
                 "Result will be marked invalid_for_redis_down_analysis=true. ***\n"
             )
         else:

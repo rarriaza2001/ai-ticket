@@ -14,6 +14,7 @@ from app.core.telemetry import configure_tracing
 from app.db.session import create_async_engine_from_settings, create_session_factory
 from app.infrastructure.redis import create_redis_client
 from app.middleware.access_log import AccessLogMiddleware
+from app.middleware.cache_headers import apply_cache_headers_middleware
 from app.middleware.request_id import RequestIdMiddleware
 
 logger = get_logger(__name__)
@@ -62,4 +63,5 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+# ASGI entrypoint: pure-ASGI cache headers (tests import create_app() for FastAPI + .state).
+app = apply_cache_headers_middleware(create_app())
